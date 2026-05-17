@@ -7,3 +7,4 @@ Lulu-ext is an extension library based on [Lulu] (https://github.com/trainking/l
 ## Packages
 
 - [matchx](matchx/) — Matchmaking queue with real-player grouping and AI bot backfill. [[Usage]](matchx/USAGE_zh.md)
+- [container](container/) — Common containers including `RankBoard`, a concurrent leaderboard. [[Usage]](container/USAGE_zh.md)
