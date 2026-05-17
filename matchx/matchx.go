@@ -15,9 +15,10 @@ import (
 type (
 	// MatchPlayer 匹配的玩家
 	MatchPlayer struct {
-		UserID   uint64      // 此玩家的ID，唯一标识
-		UserData interface{} // 玩家数据
-		IsRobot  bool        // 是否是机器人
+		UserID    uint64      // 此玩家的ID，唯一标识
+		UserData  interface{} // 玩家数据
+		IsRobot   bool        // 是否是机器人
+		RobotOnly bool        // 仅与机器人匹配，跳过真人排队
 	}
 
 	// MatchGroup 匹配的玩家组

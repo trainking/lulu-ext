@@ -4,27 +4,31 @@ import "time"
 
 // run 执行匹配
 func (mq *MatchQueue) run() {
-	tiemOut := time.NewTicker(mq.realTimeout)
+	timeOut := time.NewTicker(mq.realTimeout)
+	defer timeOut.Stop()
 	for {
 		select {
 		case <-mq.closeChan:
 			return
 		case p := <-mq.matchDel:
 			for e := mq.matching.Front(); e != nil; e = e.Next() {
-				eV := e.Value.(uint64)
-				if eV == p {
+				if e.Value.(uint64) == p {
 					mq.matching.Remove(e)
 					delete(mq.matchValue, p)
 					break
 				}
 			}
 		case p := <-mq.matchAdd:
-			mq.matching.PushBack(p)
-			mq.matchValue[p.UserID] = p
-			if mq.matching.Len() >= mq.callback.GetSuccessNum() {
-				mq.groupReal()
+			if p.RobotOnly {
+				mq.GroupAI(p)
+			} else {
+				mq.matching.PushBack(p.UserID)
+				mq.matchValue[p.UserID] = p
+				if mq.matching.Len() >= mq.callback.GetSuccessNum() {
+					mq.groupReal()
+				}
 			}
-		case <-tiemOut.C:
+		case <-timeOut.C:
 			if mq.matching.Len() > 0 {
 				length := mq.matching.Len()
 				for i := 0; i < length; i++ {
@@ -44,24 +48,30 @@ func (mq *MatchQueue) run() {
 // groupReal 组真人匹配
 func (mq *MatchQueue) groupReal() {
 	successNum := mq.callback.GetSuccessNum()
-	if mq.matching.Len() >= successNum {
-		var players []*MatchPlayer
-		for item := mq.matching.Front(); item != nil; item = item.Next() {
-			iv := item.Value.(uint64)
-			if mp, ok := mq.matchValue[iv]; ok {
-				players = append(players, mp)
-			}
-			mq.matching.Remove(item)
-			delete(mq.matchValue, iv)
-			if len(players) == successNum {
-				mq.success <- &MatchGroup{Players: players}
-				return
-			}
+	if mq.matching.Len() < successNum {
+		return
+	}
+	var players []*MatchPlayer
+	for item := mq.matching.Front(); item != nil && len(players) < successNum; {
+		next := item.Next()
+		userID := item.Value.(uint64)
+		if mp, ok := mq.matchValue[userID]; ok {
+			players = append(players, mp)
 		}
+		mq.matching.Remove(item)
+		delete(mq.matchValue, userID)
+		item = next
+	}
 
-		// 未组成，则将所有玩家放回
+	if len(players) == successNum {
+		select {
+		case mq.success <- &MatchGroup{Players: players}:
+		case <-mq.closeChan:
+		}
+	} else {
+		// 未组成足够人数，放回队列
 		for _, p := range players {
-			mq.matching.PushBack(p)
+			mq.matching.PushBack(p.UserID)
 			mq.matchValue[p.UserID] = p
 		}
 	}
@@ -79,7 +89,10 @@ func (mq *MatchQueue) GroupAI(p *MatchPlayer) {
 		players := make([]*MatchPlayer, 0, successNum)
 		players = append(players, p)
 		players = append(players, robots...)
-		mq.success <- &MatchGroup{Players: players}
+		select {
+		case mq.success <- &MatchGroup{Players: players}:
+		case <-mq.closeChan:
+		}
 	}
 }
 
@@ -91,6 +104,11 @@ func (mq *MatchQueue) Add(p *MatchPlayer) {
 // Del 删除匹配玩家
 func (mq *MatchQueue) Del(p uint64) {
 	mq.matchDel <- p
+}
+
+// Success 返回成功匹配的 channel
+func (mq *MatchQueue) Success() <-chan *MatchGroup {
+	return mq.success
 }
 
 // Close 关闭匹配队列
